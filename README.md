@@ -52,6 +52,30 @@ If a request is not allowed `/wait` waits until allowed, and returns a response.
 - 201: A rate limiter for `key` was created.
 - 429: Not allowed by a rate limiter.
 
+### /stats
+
+```json
+{
+  "cache_size": 100000,
+  "keys": 25244,
+  "evicted": 0,
+  "created": 25252,
+  "passed": 250908,
+  "throttled": 0,
+  "uptime": 10.57429709,
+  "started": "2016-10-06T23:16:22.027640023+09:00"
+}
+```
+
+- cache_size: == `-size` option.
+- keys: exists keys count.
+- evicted: evicted keys count.
+- created: created keys count.
+- passed: allowed requests count.
+- throttled: throttled (429 returned) requests count.
+- uptime: throttled process uptime (sec)
+- started: throttled process started at.
+
 ## Examples
 
 ```
