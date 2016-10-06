@@ -2,6 +2,7 @@ package throttled
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -134,6 +135,12 @@ type Flusher interface {
 	Flush() error
 }
 
+type Request struct {
+	Key   string
+	Rate  rate.Limit
+	Burst int
+}
+
 func init() {
 	mux.HandleFunc("/allow", allowHandler)
 	mux.HandleFunc("/wait", waitHandler)
@@ -165,41 +172,56 @@ func Handler(w io.Writer) http.Handler {
 	return accesslog.NewLoggingHandler(mux, l)
 }
 
-func setHandler(w http.ResponseWriter, r *http.Request) {
+func parseRequest(r *http.Request) (*Request, error) {
 	key := r.FormValue("key")
 	if key == "" {
-		response(w, http.StatusBadRequest)
-		return
+		return nil, errors.New("invalid key")
 	}
 	rateLimit, err := strconv.ParseFloat(r.FormValue("rate"), 64)
 	if err != nil {
-		response(w, http.StatusBadRequest)
-		return
+		return nil, errors.New("invalid rate")
 	}
 	burst, err := strconv.ParseInt(r.FormValue("burst"), 10, 64)
+	if err != nil {
+		return nil, errors.New("invalid burst")
+	}
+	return &Request{
+		Key:   key,
+		Rate:  rate.Limit(rateLimit),
+		Burst: int(burst),
+	}, nil
+}
+
+func setHandler(w http.ResponseWriter, r *http.Request) {
+	rv, err := parseRequest(r)
 	if err != nil {
 		response(w, http.StatusBadRequest)
 		return
 	}
-
-	l := rate.NewLimiter(rate.Limit(rateLimit), int(burst))
-	throttles.Add(key, l)
+	l := rate.NewLimiter(rv.Rate, rv.Burst)
+	throttles.Add(rv.Key, l)
 	stats.Create()
 	response(w, http.StatusCreated)
 }
 
 func allowHandler(w http.ResponseWriter, r *http.Request) {
-	key := r.FormValue("key")
-	if key == "" {
+	rv, err := parseRequest(r)
+	if err != nil {
 		response(w, http.StatusBadRequest)
 		return
 	}
 	if _w, ok := w.(*accesslog.LoggingWriter); ok {
-		_w.SetCustomLogRecord("Key", key)
+		_w.SetCustomLogRecord("Key", rv.Key)
 	}
 
-	if l, ok := throttles.Get(key); ok {
-		if l.(*rate.Limiter).Allow() {
+	if _l, ok := throttles.Get(rv.Key); ok {
+		l := _l.(*rate.Limiter)
+		if rv.Rate != l.Limit() || rv.Burst != l.Burst() {
+			// renew a limiter
+			setHandler(w, r)
+			return
+		}
+		if l.Allow() {
 			stats.Allow()
 			response(w, http.StatusOK)
 		} else {
@@ -219,19 +241,26 @@ func statsHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func waitHandler(w http.ResponseWriter, r *http.Request) {
-	key := r.FormValue("key")
-	if key == "" {
+	rv, err := parseRequest(r)
+	if err != nil {
 		response(w, http.StatusBadRequest)
 		return
 	}
 	if _w, ok := w.(*accesslog.LoggingWriter); ok {
-		_w.SetCustomLogRecord("Key", key)
+		_w.SetCustomLogRecord("Key", rv.Key)
 	}
 
-	if l, ok := throttles.Get(key); ok {
+	if _l, ok := throttles.Get(rv.Key); ok {
+		l := _l.(*rate.Limiter)
+		if rv.Rate != l.Limit() || rv.Burst != l.Burst() {
+			// renew a limiter
+			setHandler(w, r)
+			return
+		}
+
 		ctx, cancel := context.WithTimeout(context.Background(), maxWait)
 		defer cancel()
-		if err := l.(*rate.Limiter).Wait(ctx); err != nil {
+		if err := l.Wait(ctx); err != nil {
 			stats.Deny()
 			response(w, http.StatusTooManyRequests)
 		} else {
