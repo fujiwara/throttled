@@ -18,7 +18,7 @@ var ts *httptest.Server
 
 func TestMain(m *testing.M) {
 	throttled.Setup(10000)
-	ts = httptest.NewServer(throttled.Handler(ioutil.Discard))
+	ts = httptest.NewServer(throttled.Handler(nil))
 	os.Exit(m.Run())
 }
 

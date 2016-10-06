@@ -153,6 +153,10 @@ func Setup(size int) {
 }
 
 func Handler(w io.Writer) http.Handler {
+	if w == nil {
+		return mux
+	}
+
 	l := logger{
 		w:       w,
 		encoder: json.NewEncoder(w),
