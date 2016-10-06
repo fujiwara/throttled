@@ -9,11 +9,12 @@ go get github.com/fujiwara/throttled/cmd/throttled
 ```
 
 ```
-$ throtted -port PORT [-size CACHE_SIZE]
+$ throtted -port PORT [-size CACHE_SIZE] [-accesslog]
 ```
 
 - `-port` Listen port number. required.
 - `-size` LRU cache size. optional. (default 100,000)
+- `-accesslog` Output access.log(JSON) to stdout. optional.
 
 ## API
 
