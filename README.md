@@ -5,7 +5,7 @@ A throttling httpd by Go.
 ## Install & Run
 
 ```
-go get github.com/fujiwara/throttled/cmd/throtted
+go get github.com/fujiwara/throttled/cmd/throttled
 ```
 
 ```
