@@ -1,12 +1,10 @@
-package main
+package throttled
 
 import (
 	"encoding/json"
-	"flag"
 	"fmt"
-	"log"
+	"io"
 	"net/http"
-	"os"
 	"strconv"
 	"time"
 
@@ -20,10 +18,10 @@ var (
 	mux       = http.NewServeMux()
 	throttles = cache.New(5*time.Minute, 30*time.Second)
 	maxWait   = 10 * time.Second
-	encoder   = json.NewEncoder(os.Stdout)
 )
 
 type logger struct {
+	encoder *json.Encoder
 }
 
 type LogRecord struct {
@@ -49,7 +47,7 @@ func (t Apptime) MarshalJSON() ([]byte, error) {
 }
 
 func (l logger) Log(r accesslog.LogRecord) {
-	encoder.Encode(LogRecord{
+	l.encoder.Encode(LogRecord{
 		Time:        r.Time,
 		Ip:          r.Ip,
 		Method:      r.Method,
@@ -68,17 +66,11 @@ func init() {
 	mux.HandleFunc("/wait", waitHandler)
 }
 
-func main() {
-	port := flag.Int("port", 0, "Listen port")
-	flag.Parse()
-	if *port == 0 {
-		log.Println("-port required")
-		os.Exit(1)
+func Handler(w io.Writer) http.Handler {
+	l := logger{
+		encoder: json.NewEncoder(w),
 	}
-	addr := fmt.Sprintf(":%d", *port)
-	log.Printf("throttled starting up on %s", addr)
-	h := accesslog.NewLoggingHandler(mux, logger{})
-	log.Fatal(http.ListenAndServe(addr, h))
+	return accesslog.NewLoggingHandler(mux, l)
 }
 
 func setHandler(w http.ResponseWriter, r *http.Request) {
@@ -114,7 +106,9 @@ func allowHandler(w http.ResponseWriter, r *http.Request) {
 		response(w, http.StatusBadRequest)
 		return
 	}
-	w.(*accesslog.LoggingWriter).SetCustomLogRecord("Key", key)
+	if _w, ok := w.(*accesslog.LoggingWriter); ok {
+		_w.SetCustomLogRecord("Key", key)
+	}
 
 	if l, ok := throttles.Get(key); ok {
 		if l.(*rate.Limiter).Allow() {
@@ -133,7 +127,9 @@ func waitHandler(w http.ResponseWriter, r *http.Request) {
 		response(w, http.StatusBadRequest)
 		return
 	}
-	w.(*accesslog.LoggingWriter).SetCustomLogRecord("Key", key)
+	if _w, ok := w.(*accesslog.LoggingWriter); ok {
+		_w.SetCustomLogRecord("Key", key)
+	}
 
 	if l, ok := throttles.Get(key); ok {
 		ctx, cancel := context.WithTimeout(context.Background(), maxWait)
