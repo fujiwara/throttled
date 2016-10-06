@@ -24,7 +24,7 @@ func TestMain(m *testing.M) {
 
 func TestAllow(t *testing.T) {
 	for i := 0; i < 5; i++ {
-		u := ts.URL + "/allow?key=test_allow&rate=1&burst=1&expires=60"
+		u := ts.URL + "/allow?key=test_allow&rate=1&burst=1"
 		res, err := http.Get(u)
 		if err != nil {
 			t.Errorf("GET %s error: %s", u, err)
@@ -43,7 +43,7 @@ func TestAllow(t *testing.T) {
 
 func TestAllowBurst(t *testing.T) {
 	for i := 0; i < 10; i++ {
-		u := ts.URL + "/allow?key=test_allow_burst&rate=1&burst=10&expires=60"
+		u := ts.URL + "/allow?key=test_allow_burst&rate=1&burst=10"
 		res, err := http.Get(u)
 		if err != nil {
 			t.Errorf("GET %s error: %s", u, err)
@@ -62,7 +62,7 @@ func TestAllowBurst(t *testing.T) {
 func TestAllow429(t *testing.T) {
 	s := make(map[int]int)
 	for i := 0; i < 100; i++ {
-		u := ts.URL + "/allow?key=test_allow_restricted&rate=1&burst=1&expires=60"
+		u := ts.URL + "/allow?key=test_allow_restricted&rate=1&burst=1"
 		res, err := http.Get(u)
 		if err != nil {
 			t.Errorf("GET %s error: %s", u, err)

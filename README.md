@@ -9,10 +9,11 @@ go get github.com/fujiwara/throttled/cmd/throttled
 ```
 
 ```
-$ throtted -port 8888
+$ throtted -port PORT [-size CACHE_SIZE]
 ```
 
-`-port` is required.
+- `-port` Listen port number. required.
+- `-size` LRU cache size. optional. (default 100,000)
 
 ## API
 
@@ -23,12 +24,11 @@ $ throtted -port 8888
 ### /allow
 
 ```
-GET /allow?key=${identifier}&rate=${rate}&burst=${burst}&expires=${expires}
+GET /allow?key=${identifier}&rate=${rate}&burst=${burst}
 ```
 
 - rate: Request rate(/sec) (float)
 - burst: Burst tokens count (int)
-- expires: Expiration time(sec) of a rate limiter for each `key`(int)
 
 `/allow` returns a response immediately.
 
@@ -39,12 +39,11 @@ GET /allow?key=${identifier}&rate=${rate}&burst=${burst}&expires=${expires}
 ### /wait
 
 ```
-GET /wait?key=${identifier}&rate=${rate}&burst=${burst}&expires=${expires}
+GET /wait?key=${identifier}&rate=${rate}&burst=${burst}
 ```
 
 - rate: Request rate(/sec) (float)
 - burst: Burst tokens count (int)
-- expires: Expiration time(sec) of a rate limiter for each `key`(int)
 
 If a request is not allowed `/wait` waits until allowed, and returns a response.
 
@@ -55,8 +54,8 @@ If a request is not allowed `/wait` waits until allowed, and returns a response.
 ## Examples
 
 ```
-$ wrk -c 10 -t 4 -d 10 "http://localhost:8888/allow?key=foo&rate=100&burst=100&expires=60"
-Running 10s test @ http://localhost:8888/allow?key=foo&rate=100&burst=100&expires=60
+$ wrk -c 10 -t 4 -d 10 "http://localhost:8888/allow?key=foo&rate=100&burst=100"
+Running 10s test @ http://localhost:8888/allow?key=foo&rate=100&burst=100
   4 threads and 10 connections
   Thread Stats   Avg      Stdev     Max   +/- Stdev
     Latency   274.56us  838.09us  32.03ms   97.65%
@@ -70,8 +69,8 @@ Transfer/sec:      5.43MB
 426613(total) - 425502(Non-2xx or 3xx) = 1111 / 10.10s =~ 110 req/sec
 
 ```
-$ wrk -c 10 -t 4 -d 10 "http://localhost:8888/wait?key=foo&rate=100&burst=100&expires=60"
-Running 10s test @ http://localhost:8888/wait?key=foo&rate=100&burst=100&expires=60
+$ wrk -c 10 -t 4 -d 10 "http://localhost:8888/wait?key=foo&rate=100&burst=100"
+Running 10s test @ http://localhost:8888/wait?key=foo&rate=100&burst=100
   4 threads and 10 connections
   Thread Stats   Avg      Stdev     Max   +/- Stdev
     Latency    72.43ms   23.23ms  82.63ms   90.40%
