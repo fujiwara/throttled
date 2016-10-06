@@ -6,18 +6,22 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"sync"
 	"time"
 
+	lru "github.com/hashicorp/golang-lru"
 	accesslog "github.com/mash/go-accesslog"
-	cache "github.com/patrickmn/go-cache"
 	"golang.org/x/net/context"
 	"golang.org/x/time/rate"
 )
 
 var (
 	mux       = http.NewServeMux()
-	throttles = cache.New(5*time.Minute, 30*time.Second)
 	maxWait   = 10 * time.Second
+	throttles *lru.Cache
+	evicted   int64
+	mu        sync.RWMutex
+	stats     *Stats
 )
 
 type logger struct {
@@ -35,6 +39,47 @@ type LogRecord struct {
 	Status      int       `json:"status"`
 	Size        int64     `json:"size"`
 	ElapsedTime Apptime   `json:"apptime"`
+}
+
+type Stats struct {
+	Size      int       `json:"cache_size"`
+	Keys      int       `json:"keys"`
+	Evicted   int64     `json:"evicted"`
+	Created   int64     `json:"created"`
+	Passed    int64     `json:"passed"`
+	Throttled int64     `json:"throttled"`
+	Uptime    float64   `json:"uptime"`
+	Started   time.Time `json:"started"`
+}
+
+func (s *Stats) Update() {
+	s.Keys = throttles.Len()
+	s.Uptime = time.Now().Sub(s.Started).Seconds()
+}
+
+func (s *Stats) Allow() {
+	mu.Lock()
+	defer mu.Unlock()
+	s.Passed++
+}
+
+func (s *Stats) Deny() {
+	mu.Lock()
+	defer mu.Unlock()
+	s.Throttled++
+}
+
+func (s *Stats) Create() {
+	mu.Lock()
+	defer mu.Unlock()
+	s.Created++
+	s.Passed++
+}
+
+func (s *Stats) Evict(k, v interface{}) {
+	mu.Lock()
+	defer mu.Unlock()
+	s.Evicted++
 }
 
 type Apptime struct {
@@ -64,6 +109,19 @@ func (l logger) Log(r accesslog.LogRecord) {
 func init() {
 	mux.HandleFunc("/allow", allowHandler)
 	mux.HandleFunc("/wait", waitHandler)
+	mux.HandleFunc("/stats", statsHandler)
+}
+
+func Setup(size int) {
+	var err error
+	stats = &Stats{
+		Size:    size,
+		Started: time.Now(),
+	}
+	throttles, err = lru.NewWithEvict(size, stats.Evict)
+	if err != nil {
+		panic(err)
+	}
 }
 
 func Handler(w io.Writer) http.Handler {
@@ -89,14 +147,10 @@ func setHandler(w http.ResponseWriter, r *http.Request) {
 		response(w, http.StatusBadRequest)
 		return
 	}
-	expires, err := strconv.ParseInt(r.FormValue("expires"), 10, 64)
-	if err != nil {
-		response(w, http.StatusBadRequest)
-		return
-	}
 
 	l := rate.NewLimiter(rate.Limit(rateLimit), int(burst))
-	throttles.Set(key, l, time.Duration(expires)*time.Second)
+	throttles.Add(key, l)
+	stats.Create()
 	response(w, http.StatusCreated)
 }
 
@@ -112,13 +166,22 @@ func allowHandler(w http.ResponseWriter, r *http.Request) {
 
 	if l, ok := throttles.Get(key); ok {
 		if l.(*rate.Limiter).Allow() {
+			stats.Allow()
 			response(w, http.StatusOK)
 		} else {
+			stats.Deny()
 			response(w, http.StatusTooManyRequests)
 		}
 		return
 	}
 	setHandler(w, r)
+}
+
+func statsHandler(w http.ResponseWriter, r *http.Request) {
+	enc := json.NewEncoder(w)
+	w.Header().Set("Content-Type", "application/json")
+	stats.Update()
+	enc.Encode(stats)
 }
 
 func waitHandler(w http.ResponseWriter, r *http.Request) {
@@ -135,8 +198,10 @@ func waitHandler(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(context.Background(), maxWait)
 		defer cancel()
 		if err := l.(*rate.Limiter).Wait(ctx); err != nil {
+			stats.Deny()
 			response(w, http.StatusTooManyRequests)
 		} else {
+			stats.Allow()
 			response(w, http.StatusOK)
 		}
 		return

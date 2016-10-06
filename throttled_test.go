@@ -17,6 +17,7 @@ import (
 var ts *httptest.Server
 
 func TestMain(m *testing.M) {
+	throttled.Setup(10000)
 	ts = httptest.NewServer(throttled.Handler(ioutil.Discard))
 	os.Exit(m.Run())
 }
