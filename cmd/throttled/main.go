@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"flag"
 	"fmt"
 	"log"
@@ -8,6 +9,7 @@ import (
 	"os"
 
 	"github.com/fujiwara/throttled"
+	isatty "github.com/mattn/go-isatty"
 )
 
 func main() {
@@ -21,6 +23,13 @@ func main() {
 	}
 	addr := fmt.Sprintf(":%d", port)
 	log.Printf("throttled starting up on %s", addr)
+
+	var h http.Handler
+	if isatty.IsTerminal(os.Stdout.Fd()) {
+		h = throttled.Handler(os.Stdout)
+	} else {
+		h = throttled.Handler(bufio.NewWriter(os.Stdout))
+	}
 	throttled.Setup(size)
-	log.Fatal(http.ListenAndServe(addr, throttled.Handler(os.Stdout)))
+	log.Fatal(http.ListenAndServe(addr, h))
 }

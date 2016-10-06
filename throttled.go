@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"strconv"
 	"sync"
@@ -20,11 +21,13 @@ var (
 	maxWait   = 10 * time.Second
 	throttles *lru.Cache
 	evicted   int64
-	mu        sync.RWMutex
+	mu        sync.Mutex
+	logMu     sync.Mutex
 	stats     *Stats
 )
 
 type logger struct {
+	w       io.Writer
 	encoder *json.Encoder
 }
 
@@ -92,6 +95,8 @@ func (t Apptime) MarshalJSON() ([]byte, error) {
 }
 
 func (l logger) Log(r accesslog.LogRecord) {
+	logMu.Lock()
+	defer logMu.Unlock()
 	l.encoder.Encode(LogRecord{
 		Time:        r.Time,
 		Ip:          r.Ip,
@@ -104,6 +109,29 @@ func (l logger) Log(r accesslog.LogRecord) {
 		Size:        r.Size,
 		ElapsedTime: Apptime{r.ElapsedTime},
 	})
+}
+
+func (l logger) Flush() error {
+	if _w, ok := l.w.(Flusher); ok {
+		logMu.Lock()
+		defer logMu.Unlock()
+		return _w.Flush()
+	}
+	return nil
+}
+
+func (l logger) PeriodicalFlush() {
+	c := time.Tick(1 * time.Second)
+	for range c {
+		err := l.Flush()
+		if err != nil {
+			log.Println(err)
+		}
+	}
+}
+
+type Flusher interface {
+	Flush() error
 }
 
 func init() {
@@ -126,8 +154,10 @@ func Setup(size int) {
 
 func Handler(w io.Writer) http.Handler {
 	l := logger{
+		w:       w,
 		encoder: json.NewEncoder(w),
 	}
+	go l.PeriodicalFlush()
 	return accesslog.NewLoggingHandler(mux, l)
 }
 
