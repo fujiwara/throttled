@@ -23,8 +23,7 @@ $ throttled --port PORT [--size CACHE_SIZE]
 
 **Note about burst parameter:**
 - `burst` represents the maximum number of tokens that can be stored in the bucket
-- When `burst=0`, no tokens can be stored, effectively blocking all requests after the initial limiter creation
-- The first request with a new key returns 201 (limiter created), but subsequent requests will always return 429
+- When `burst=0`, no tokens can be stored, effectively blocking all requests immediately
 - For practical use, set `burst` to at least 1
 
 ### /allow
@@ -39,7 +38,6 @@ GET /allow?key=${identifier}&rate=${rate}&burst=${burst}
 `/allow` returns a response immediately.
 
 - 200: OK. Allowed by a rate limiter.
-- 201: A rate limiter for `key` was created.
 - 429: Not allowed by a rate limiter. Includes `Retry-After` header with suggested wait time in seconds.
 
 ### /wait
@@ -54,8 +52,7 @@ GET /wait?key=${identifier}&rate=${rate}&burst=${burst}
 If a request is not allowed `/wait` waits until allowed, and returns a response.
 
 - 200: OK. Allowed by a rate limiter.
-- 201: A rate limiter for `key` was created.
-- 429: Not allowed by a rate limiter. Includes `Retry-After` header with suggested wait time in seconds.
+- 429: Not allowed by a rate limiter (context timeout). Includes `Retry-After` header with suggested wait time in seconds.
 
 ### /metrics
 
