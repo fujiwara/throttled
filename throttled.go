@@ -65,10 +65,11 @@ func parseLimitRequest(r *http.Request) (*LimitRequest, error) {
 	}, nil
 }
 
-func (s *Server) newLimiter(rv *LimitRequest) {
+func (s *Server) newLimiter(rv *LimitRequest) *rate.Limiter {
 	l := rate.NewLimiter(rv.Rate, rv.Burst)
 	s.Cache.Add(rv.Key, l)
 	rateLimitCreatedTotal.Inc()
+	return l
 }
 
 func (s *Server) runLimiter(w http.ResponseWriter, r *http.Request, wait bool) {
@@ -78,33 +79,34 @@ func (s *Server) runLimiter(w http.ResponseWriter, r *http.Request, wait bool) {
 		return
 	}
 
+	var l *rate.Limiter
+
 	if _l, ok := s.Cache.Get(rv.Key); !ok {
-		s.newLimiter(rv)
-		s.response(w, http.StatusCreated)
-		return
+		l = s.newLimiter(rv)
 	} else {
-		l := _l.(*rate.Limiter)
+		l = _l.(*rate.Limiter)
 		if rv.Rate != l.Limit() || rv.Burst != l.Burst() {
 			// renew a limiter
-			s.newLimiter(rv)
-			s.response(w, http.StatusCreated)
+			l = s.newLimiter(rv)
 		}
-		if wait {
-			if err := l.Wait(r.Context()); err != nil {
-				rateLimitHitsTotal.Inc()
-				s.response(w, http.StatusTooManyRequests)
-			} else {
-				rateLimitAllowedTotal.Inc()
-				s.response(w, http.StatusOK)
-			}
+	}
+
+	// Apply rate limiting to all requests
+	if wait {
+		if err := l.Wait(r.Context()); err != nil {
+			rateLimitHitsTotal.Inc()
+			s.response(w, http.StatusTooManyRequests)
 		} else {
-			if l.Allow() {
-				rateLimitAllowedTotal.Inc()
-				s.response(w, http.StatusOK)
-			} else {
-				rateLimitHitsTotal.Inc()
-				s.responseWithRetryAfter(w, http.StatusTooManyRequests, l)
-			}
+			rateLimitAllowedTotal.Inc()
+			s.response(w, http.StatusOK)
+		}
+	} else {
+		if l.Allow() {
+			rateLimitAllowedTotal.Inc()
+			s.response(w, http.StatusOK)
+		} else {
+			rateLimitHitsTotal.Inc()
+			s.responseWithRetryAfter(w, http.StatusTooManyRequests, l)
 		}
 	}
 }
