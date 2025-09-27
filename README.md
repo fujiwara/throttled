@@ -21,6 +21,12 @@ $ throttled --port PORT [--size CACHE_SIZE]
 
 `x/time/rate` implements a "token bucket" rate limiter.
 
+**Note about burst parameter:**
+- `burst` represents the maximum number of tokens that can be stored in the bucket
+- When `burst=0`, no tokens can be stored, effectively blocking all requests after the initial limiter creation
+- The first request with a new key returns 201 (limiter created), but subsequent requests will always return 429
+- For practical use, set `burst` to at least 1
+
 ### /allow
 
 ```
