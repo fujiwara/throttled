@@ -65,58 +65,54 @@ func parseLimitRequest(r *http.Request) (*LimitRequest, error) {
 	}, nil
 }
 
-func (s *Server) newLimiter(rv *LimitRequest) *rate.Limiter {
+func (s *Server) getLimiter(rv *LimitRequest) *rate.Limiter {
+	if _l, ok := s.Cache.Get(rv.Key); ok {
+		l := _l.(*rate.Limiter)
+		if rv.Rate == l.Limit() && rv.Burst == l.Burst() {
+			return l
+		}
+		// renew limiter when rate or burst parameters changed
+	}
 	l := rate.NewLimiter(rv.Rate, rv.Burst)
 	s.Cache.Add(rv.Key, l)
 	rateLimitCreatedTotal.Inc()
 	return l
 }
 
-func (s *Server) runLimiter(w http.ResponseWriter, r *http.Request, wait bool) {
+func (s *Server) allowHandleFunc(w http.ResponseWriter, r *http.Request) {
 	rv, err := parseLimitRequest(r)
 	if err != nil {
 		s.response(w, http.StatusBadRequest)
 		return
 	}
-
-	var l *rate.Limiter
-
-	if _l, ok := s.Cache.Get(rv.Key); !ok {
-		l = s.newLimiter(rv)
+	l := s.getLimiter(rv)
+	if l.Allow() {
+		rateLimitAllowedTotal.Inc()
+		s.response(w, http.StatusOK)
+		return
 	} else {
-		l = _l.(*rate.Limiter)
-		if rv.Rate != l.Limit() || rv.Burst != l.Burst() {
-			// renew a limiter
-			l = s.newLimiter(rv)
-		}
+		rateLimitHitsTotal.Inc()
+		s.responseWithRetryAfter(w, http.StatusTooManyRequests, l)
+		return
 	}
-
-	// Apply rate limiting to all requests
-	if wait {
-		if err := l.Wait(r.Context()); err != nil {
-			rateLimitHitsTotal.Inc()
-			s.response(w, http.StatusTooManyRequests)
-		} else {
-			rateLimitAllowedTotal.Inc()
-			s.response(w, http.StatusOK)
-		}
-	} else {
-		if l.Allow() {
-			rateLimitAllowedTotal.Inc()
-			s.response(w, http.StatusOK)
-		} else {
-			rateLimitHitsTotal.Inc()
-			s.responseWithRetryAfter(w, http.StatusTooManyRequests, l)
-		}
-	}
-}
-
-func (s *Server) allowHandleFunc(w http.ResponseWriter, r *http.Request) {
-	s.runLimiter(w, r, false)
 }
 
 func (s *Server) waitHandleFunc(w http.ResponseWriter, r *http.Request) {
-	s.runLimiter(w, r, true)
+	rv, err := parseLimitRequest(r)
+	if err != nil {
+		s.response(w, http.StatusBadRequest)
+		return
+	}
+	l := s.getLimiter(rv)
+	if err := l.Wait(r.Context()); err != nil {
+		rateLimitHitsTotal.Inc()
+		s.response(w, http.StatusTooManyRequests)
+		return
+	} else {
+		rateLimitAllowedTotal.Inc()
+		s.response(w, http.StatusOK)
+		return
+	}
 }
 
 func (s *Server) response(w http.ResponseWriter, code int) {
@@ -139,12 +135,12 @@ func (s *Server) instrumentHandler(endpoint string, handler http.HandlerFunc) ht
 func (s *Server) responseWithRetryAfter(w http.ResponseWriter, code int, limiter *rate.Limiter) {
 	w.Header().Set("Content-Type", "text/plain")
 
-	// Reserve()を使って次のトークンが利用可能になるまでの時間を計算
+	// Use Reserve() to calculate the time until the next token is available
 	r := limiter.Reserve()
 	delay := r.Delay()
-	r.Cancel() // 実際には予約しないのでキャンセル
+	r.Cancel() // Cancel the reservation since we don't actually want to reserve
 
-	// Retry-Afterヘッダーに秒数を設定（切り上げ）
+	// Set the Retry-After header with the number of seconds (rounded up)
 	retryAfterSeconds := int(math.Ceil(delay.Seconds()))
 	if retryAfterSeconds > 0 {
 		w.Header().Set("Retry-After", strconv.Itoa(retryAfterSeconds))
