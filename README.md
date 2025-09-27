@@ -5,22 +5,21 @@ A throttling httpd by Go.
 ## Install & Run
 
 ```
-go get github.com/fujiwara/throttled/cmd/throttled
+go install github.com/fujiwara/throttled/cmd/throttled
 ```
 
 ```
-$ throtted -port PORT [-size CACHE_SIZE] [-accesslog]
+$ throttled --port PORT [--size CACHE_SIZE]
 ```
 
-- `-port` Listen port number. required.
-- `-size` LRU cache size. optional. (default 100,000)
-- `-accesslog` Output access.log(JSON) to stdout. optional.
+- `--port` Listen port number. required.
+- `--size` LRU cache size. optional. (default 100,000)
 
 ## API
 
 `throttled` uses `golang.org/x/time/rate` for throttling.
 
-`x/time/rate` implements a "token bucket" rate limitter.
+`x/time/rate` implements a "token bucket" rate limiter.
 
 ### /allow
 
@@ -51,30 +50,6 @@ If a request is not allowed `/wait` waits until allowed, and returns a response.
 - 200: OK. Allowed by a rate limiter.
 - 201: A rate limiter for `key` was created.
 - 429: Not allowed by a rate limiter.
-
-### /stats
-
-```json
-{
-  "cache_size": 100000,
-  "keys": 25244,
-  "evicted": 0,
-  "created": 25252,
-  "passed": 250908,
-  "throttled": 0,
-  "uptime": 10.57429709,
-  "started": "2016-10-06T23:16:22.027640023+09:00"
-}
-```
-
-- cache_size: == `-size` option.
-- keys: exists keys count.
-- evicted: evicted keys count.
-- created: created keys count.
-- passed: allowed requests count.
-- throttled: throttled (429 returned) requests count.
-- uptime: throttled process uptime (sec)
-- started: throttled process started at.
 
 ## Examples
 
