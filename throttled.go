@@ -1,7 +1,6 @@
 package throttled
 
 import (
-	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -42,15 +41,15 @@ type LimitRequest struct {
 func parseLimitRequest(r *http.Request) (*LimitRequest, error) {
 	key := r.FormValue("key")
 	if key == "" {
-		return nil, errors.New("invalid key")
+		return nil, fmt.Errorf("key is required")
 	}
 	rateLimit, err := strconv.ParseFloat(r.FormValue("rate"), 64)
 	if err != nil {
-		return nil, errors.New("invalid rate")
+		return nil, fmt.Errorf("invalid rate: %w", err)
 	}
 	burst, err := strconv.ParseInt(r.FormValue("burst"), 10, 64)
 	if err != nil {
-		return nil, errors.New("invalid burst")
+		return nil, fmt.Errorf("invalid burst: %w", err)
 	}
 	return &LimitRequest{
 		Key:   key,

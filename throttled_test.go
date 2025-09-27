@@ -112,7 +112,7 @@ func TestWait(t *testing.T) {
 			if res.StatusCode != http.StatusOK && res.StatusCode != http.StatusCreated {
 				t.Errorf("failed to request %s %d", u, res.StatusCode)
 			}
-			d := time.Now().Sub(s)
+			d := time.Since(s)
 			//			t.Logf("resptime %d %s", i, d)
 			mu.Lock()
 			responseTime += d
