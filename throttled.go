@@ -2,6 +2,7 @@ package throttled
 
 import (
 	"fmt"
+	"math"
 	"net/http"
 	"strconv"
 	"time"
@@ -102,7 +103,7 @@ func (s *Server) runLimiter(w http.ResponseWriter, r *http.Request, wait bool) {
 				s.response(w, http.StatusOK)
 			} else {
 				rateLimitHitsTotal.Inc()
-				s.response(w, http.StatusTooManyRequests)
+				s.responseWithRetryAfter(w, http.StatusTooManyRequests, l)
 			}
 		}
 	}
@@ -133,12 +134,35 @@ func (s *Server) instrumentHandler(endpoint string, handler http.HandlerFunc) ht
 	}
 }
 
+func (s *Server) responseWithRetryAfter(w http.ResponseWriter, code int, limiter *rate.Limiter) {
+	w.Header().Set("Content-Type", "text/plain")
+
+	// Reserve()を使って次のトークンが利用可能になるまでの時間を計算
+	r := limiter.Reserve()
+	delay := r.Delay()
+	r.Cancel() // 実際には予約しないのでキャンセル
+
+	// Retry-Afterヘッダーに秒数を設定（切り上げ）
+	retryAfterSeconds := int(math.Ceil(delay.Seconds()))
+	if retryAfterSeconds > 0 {
+		w.Header().Set("Retry-After", strconv.Itoa(retryAfterSeconds))
+	}
+
+	w.WriteHeader(code)
+	fmt.Fprintln(w, http.StatusText(code))
+}
+
 type statusRecorder struct {
 	http.ResponseWriter
-	statusCode int
+	statusCode    int
+	headerWritten bool
 }
 
 func (r *statusRecorder) WriteHeader(code int) {
+	if r.headerWritten {
+		return
+	}
 	r.statusCode = code
+	r.headerWritten = true
 	r.ResponseWriter.WriteHeader(code)
 }

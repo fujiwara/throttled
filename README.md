@@ -40,7 +40,7 @@ GET /allow?key=${identifier}&rate=${rate}&burst=${burst}
 
 - 200: OK. Allowed by a rate limiter.
 - 201: A rate limiter for `key` was created.
-- 429: Not allowed by a rate limiter.
+- 429: Not allowed by a rate limiter. Includes `Retry-After` header with suggested wait time in seconds.
 
 ### /wait
 
@@ -55,7 +55,7 @@ If a request is not allowed `/wait` waits until allowed, and returns a response.
 
 - 200: OK. Allowed by a rate limiter.
 - 201: A rate limiter for `key` was created.
-- 429: Not allowed by a rate limiter.
+- 429: Not allowed by a rate limiter. Includes `Retry-After` header with suggested wait time in seconds.
 
 ### /metrics
 
