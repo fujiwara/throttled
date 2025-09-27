@@ -9,11 +9,12 @@ go install github.com/fujiwara/throttled/cmd/throttled
 ```
 
 ```
-$ throttled --port PORT [--size CACHE_SIZE]
+$ throttled --port PORT [--size CACHE_SIZE] [--log-level LOG_LEVEL]
 ```
 
 - `--port` Listen port number. required.
 - `--size` LRU cache size. optional. (default 100,000)
+- `--log-level` Log level. optional. (default "info")
 
 ## API
 
@@ -70,6 +71,70 @@ Prometheus metrics endpoint that exposes the following metrics:
 - `throttled_cache_size`: Current cache size
 - `throttled_cache_evictions_total`: Total number of cache evictions
 - `throttled_limiters_active`: Number of active rate limiters
+
+## Logging
+
+`throttled` provides structured JSON logging using Go's `slog` package. All log entries include a `request_id` field for request tracing.
+
+### Log Levels
+
+- `debug`: Detailed information for debugging (rate limit checks, limiter operations, parameter parsing)
+- `info`: General operational information (HTTP requests, rate limit events, server lifecycle)
+- `warn`: Warning conditions (invalid request parameters)
+- `error`: Error conditions (server startup failures, operation cancellations)
+
+### Request ID Tracking
+
+Each request is assigned a unique request ID for tracing:
+
+- If the `X-Request-Id` header is present, its value is used
+- Otherwise, a UUID v7 is automatically generated
+- All log entries for a request include the same `request_id`
+
+### Log Output Examples
+
+#### HTTP Access Log
+```json
+{
+  "time": "2025-09-27T18:32:09Z",
+  "level": "INFO",
+  "msg": "HTTP request",
+  "request_id": "01998a83-f9dd-73bf-a45d-b1117108731f",
+  "method": "GET",
+  "path": "/allow",
+  "key": "user123",
+  "rate": "10",
+  "burst": "100",
+  "status": 200,
+  "duration": 0.000041,
+  "remote_addr": "[::1]:54084"
+}
+```
+
+#### Rate Limit Event
+```json
+{
+  "time": "2025-09-27T18:32:09Z",
+  "level": "INFO",
+  "msg": "Rate limited",
+  "request_id": "01998a83-f9dd-73bf-a45d-b1117108731f",
+  "key": "user123",
+  "endpoint": "/allow",
+  "retry_after": 1
+}
+```
+
+#### Server Lifecycle
+```json
+{
+  "time": "2025-09-27T18:32:07Z",
+  "level": "INFO",
+  "msg": "Server starting",
+  "port": 8080,
+  "cache_size": 100000,
+  "log_level": "info"
+}
+```
 
 ## Examples
 
