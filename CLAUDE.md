@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-throttled is a rate-limiting HTTP server written in Go that implements token bucket rate limiting using `golang.org/x/time/rate`. It provides two endpoints (`/allow` and `/wait`) for immediate and blocking rate limit checks.
+throttled is a rate-limiting HTTP server written in Go that implements token bucket rate limiting using `golang.org/x/time/rate`. It provides rate limiting endpoints (`/allow` and `/wait`) for immediate and blocking rate limit checks, plus a `/metrics` endpoint for Prometheus monitoring.
 
 ## Common Commands
 
@@ -44,13 +44,20 @@ go fmt ./...            # Format all Go code (required before commits)
 1. **Server (`throttled.go`)**: Main server implementation with LRU cache for rate limiters
    - Uses `hashicorp/golang-lru` for caching rate limiters
    - Implements `/allow` (non-blocking) and `/wait` (blocking) endpoints
+   - Implements `/metrics` endpoint for Prometheus monitoring
    - Automatically renews limiters when rate/burst parameters change
+   - Instruments handlers with request duration and count metrics
 
-2. **CLI (`cli.go`)**: Command-line interface using Kong parser
+2. **Metrics (`metrics.go`)**: Prometheus metrics collection
+   - Request metrics: count by endpoint/status, duration histograms
+   - Rate limit metrics: hits, allowed requests, created limiters
+   - Cache metrics: size, evictions, active limiters
+
+3. **CLI (`cli.go`)**: Command-line interface using Kong parser
    - `--port`: Required listen port
    - `--size`: LRU cache size (default: 100,000)
 
-3. **Entry Points**:
+4. **Entry Points**:
    - `cmd/throttled/main.go`: Binary entry point with signal handling
    - `main.go`: Core application runner with graceful shutdown
 

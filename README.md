@@ -51,6 +51,23 @@ If a request is not allowed `/wait` waits until allowed, and returns a response.
 - 201: A rate limiter for `key` was created.
 - 429: Not allowed by a rate limiter.
 
+### /metrics
+
+```
+GET /metrics
+```
+
+Prometheus metrics endpoint that exposes the following metrics:
+
+- `throttled_requests_total`: Total number of requests processed by endpoint and status
+- `throttled_request_duration_seconds`: Request processing duration histogram
+- `throttled_rate_limit_hits_total`: Total number of rate limit hits (429 responses)
+- `throttled_rate_limit_allowed_total`: Total number of allowed requests
+- `throttled_rate_limit_created_total`: Total number of newly created rate limiters
+- `throttled_cache_size`: Current cache size
+- `throttled_cache_evictions_total`: Total number of cache evictions
+- `throttled_limiters_active`: Number of active rate limiters
+
 ## Examples
 
 ```
